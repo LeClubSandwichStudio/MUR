@@ -27,7 +27,6 @@
   It beeps when you exceed inspirationAlarmLevel and plateauAlarmlevel
   This provides a minimum of over pressure protection...
 ***************************************************************************/
-
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
@@ -37,6 +36,10 @@ Servo outValve;
 Servo pressureValve;
 Adafruit_BME280 bmePatient;
 Adafruit_BME280 bmeAmbient;
+// Feature only for teensy right now, adding a third sensor
+#if defined(__arm__) && defined(TEENSYDUINO) && defined WIRE_IMPLEMENT_WIRE1
+Adafruit_BME280 bmePatient1;
+#endif
 
 // Servo Calibration, Alarm Levels and flags
 
@@ -69,10 +72,10 @@ bool inspirationAlarm = 0;
 bool plateauAlarm = 0;
 
 // Potentiometer and Servo pins
-int Led = 5;            // future neopixel Led for user feedback
-int Buzzer = 6;         // Alarm Buzzer
-int Maintenance = 7;    // sets all valves to 0° for maintaince
-int TarePressure = 8;   // possible feature to tare pressure sensors when system not under pressure
+int Led = 5;          // future neopixel Led for user feedback
+int Buzzer = 6;       // Alarm Buzzer
+int Maintenance = 7;  // sets all valves to 0° for maintaince
+int TarePressure = 8; // possible feature to tare pressure sensors when system not under pressure
 int Cycles = A0;
 int Ratio = A1;
 int Peak = A2;
@@ -101,14 +104,17 @@ int pvPos = 0;
 int plateauPos = 0;
 int baselinePos = 0;
 float bmpP = 0.;
+float bmpP1 = 0.;
 float bmeP = 0.;
 float differentialP = 0.;
+float differentialP1 = 0.;
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
 unsigned long bmpSample = 20;
 bool pressureSensorFailure = 0;
 
 // Read all potentiometers and adjust values
-void readPot() {
+void readPot()
+{
   // calculate total breath cycle lenght
   cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
   // calculate the time of the inspiration cycle including plateau
@@ -124,7 +130,8 @@ void readPot() {
   baselinePos = map(analogRead(Expiratory), 0, 1023, 0, (servoCal / 2));
 }
 
-void updateSensors() {
+void updateSensors()
+{
   // reset timer first for regular intervals!
   bmpZero = millis();
   // read Sensors, get differential
@@ -133,16 +140,24 @@ void updateSensors() {
   bmeAmbient.takeForcedMeasurement();
   bmeP = (float)bmeAmbient.readPressure() / 100.;
   differentialP = bmpP - bmeP;
-
+#if defined(__arm__) && defined(TEENSYDUINO) && defined WIRE_IMPLEMENT_WIRE1
+  //Dirt Third Sensor integration //TODO: Cleare here
+  bmePatient1.takeForcedMeasurement();
+  bmpP1 = (float)bmePatient1.readPressure() / 100.;
+  differentialP = bmpP1 - bmeP;
+#endif
   // check for sensor failiure, this alarm doesn't care if another alarm is active.
   // this is due to the fact that if one sensor fails the other alarms won't work anymore...
-  if ((bmpP <= minimumAtmosphericPressure) || (bmpP >= maximumAtmosphericPressure) || (bmeP <= minimumAtmosphericPressure) || (bmeP >= maximumAtmosphericPressure)) {
+  if ((bmpP <= minimumAtmosphericPressure) || (bmpP >= maximumAtmosphericPressure) || (bmeP <= minimumAtmosphericPressure) || (bmeP >= maximumAtmosphericPressure))
+  {
     pressureSensorFailure = 1;
     digitalWrite(Buzzer, HIGH);
   }
   // check for realistic pressures if pressureSensorFailure is active
-  if (pressureSensorFailure == 1) {
-    if ((bmpP > minimumAtmosphericPressure) && (bmpP < maximumAtmosphericPressure) && (bmeP > minimumAtmosphericPressure) && (bmeP < maximumAtmosphericPressure)) {
+  if (pressureSensorFailure == 1)
+  {
+    if ((bmpP > minimumAtmosphericPressure) && (bmpP < maximumAtmosphericPressure) && (bmeP > minimumAtmosphericPressure) && (bmeP < maximumAtmosphericPressure))
+    {
       pressureSensorFailure = 0;
       digitalWrite(Buzzer, LOW);
     }
@@ -150,6 +165,10 @@ void updateSensors() {
 
   // this is a more userfriendly graph
   Serial.print(differentialP);
+#if defined(__arm__) && defined(TEENSYDUINO) && defined WIRE_IMPLEMENT_WIRE1
+  Serial.print("\t");
+  Serial.print(differentialP1);
+#endif
   Serial.print("\t");
   Serial.print(ivPos / 4);
   Serial.print("\t");
@@ -175,25 +194,41 @@ void updateSensors() {
   */
 }
 
-void setup() {
+void setup()
+{
   pinMode(Maintenance, INPUT_PULLUP);
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
   Serial.begin(115200);
   bool P1 = bmePatient.begin(0x77);
-  if (!P1) {
+  if (!P1)
+  {
     pressureSensorFailure = 1;
     //Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");
   }
   bmePatient.setSampling(1, 1, 3, 1, 1, 10);
   bool P2 = bmeAmbient.begin(0x76);
-  if (!P2) {
+  if (!P2)
+  {
     pressureSensorFailure = 1;
     //Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
   }
   // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
   bmeAmbient.setSampling(1, 1, 3, 1, 1, 10);
   // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
+
+#if defined(__arm__) && defined(TEENSYDUINO) && defined WIRE_IMPLEMENT_WIRE1
+  // Wire1.setSDA(30); // <-------------- Necessary ?
+  // Wire1.setSCL(29); // <-------------- Necessary ?
+  bool P3 = bmePatient1.begin(0x77, &Wire1);
+  if (!P3)
+  {
+    // Serial.println("Failed to init Third BME Sensor");
+  }
+  bmePatient1.setSampling(1, 1, 3, 1, 1, 10);
+
+#endif
+
   inValve.attach(2);
   outValve.attach(3);
   pressureValve.attach(4);
@@ -202,29 +237,35 @@ void setup() {
   readPot();
 }
 
-void loop() {
-  if (digitalRead(Maintenance) == HIGH) {
+void loop()
+{
+  if (digitalRead(Maintenance) == HIGH)
+  {
     // read potentiometers and update values
     readPot();
 
     // read the bmp180 in regular intervals
-    if (bmpSample < (millis() - bmpZero)) {
+    if (bmpSample < (millis() - bmpZero))
+    {
       // sample time before reading the sensor for a regular interval
       updateSensors();
     }
 
     // here comes the breathing cycle
     // start cycle
-    if ((inspiration == 0) && (plateau == 0) && (expiration == 0)) {
+    if ((inspiration == 0) && (plateau == 0) && (expiration == 0))
+    {
       cycleZero = millis();
       inspiration = 1;
       //Serial.println("Start cycle");
     }
 
     // inspiration
-    if ((inspiration == 1) && (plateau == 0) && (expiration == 0)) {
+    if ((inspiration == 1) && (plateau == 0) && (expiration == 0))
+    {
       // if inValve is not jet open on start
-      if (ivPos != servoCal) { // && (inspirationT <= (millis() - cycleZero))) {
+      if (ivPos != servoCal)
+      { // && (inspirationT <= (millis() - cycleZero))) {
         ivPos = servoCal;
         inValve.write(ivPos);
         // Serial.print("Open Input Valve\t");
@@ -232,18 +273,23 @@ void loop() {
       }
 
       // check for plateau Alarm if no other Alarm is active
-      if (!pressureSensorFailure && !plateauAlarm) {
-        if (differentialP > inspirationAlarmLevel) {
+      if (!pressureSensorFailure && !plateauAlarm)
+      {
+        if (differentialP > inspirationAlarmLevel)
+        {
           digitalWrite(Buzzer, HIGH);
           inspirationAlarm = 1;
-        } else {
+        }
+        else
+        {
           digitalWrite(Buzzer, LOW);
           inspirationAlarm = 0;
         }
       }
 
       // once inspiration is finished close input valve and set flags
-      if (inspirationT <= (millis() - cycleZero)) {
+      if (inspirationT <= (millis() - cycleZero))
+      {
         ivPos = plateauPos;
         inValve.write(ivPos);
         plateau = 1;
@@ -253,8 +299,10 @@ void loop() {
     }
 
     // plateau
-    if ((inspiration == 1) && (plateau == 1) && (expiration == 0)) {
-      if (plateauT <= (millis() - cycleZero)) {
+    if ((inspiration == 1) && (plateau == 1) && (expiration == 0))
+    {
+      if (plateauT <= (millis() - cycleZero))
+      {
         ivPos = 0;
         inValve.write(baselinePos);
         ovPos = servoCal;
@@ -264,18 +312,24 @@ void loop() {
         // Serial.println((int)millis() - cycleZero);
 
         // keep track of any control changes on plateau pressure
-      } else if (plateauPos != ivPos) {
+      }
+      else if (plateauPos != ivPos)
+      {
         ivPos = plateauPos;
         inValve.write(ivPos);
       }
 
       // check for plateau Alarm if no other Alarm is active
-      if (!pressureSensorFailure && !inspirationAlarm) {
+      if (!pressureSensorFailure && !inspirationAlarm)
+      {
         // activate Buzzer if there is to much pressure during plateau
-        if (differentialP > plateauAlarmLevel) {
+        if (differentialP > plateauAlarmLevel)
+        {
           digitalWrite(Buzzer, HIGH);
           plateauAlarm = 1;
-        } else {
+        }
+        else
+        {
           digitalWrite(Buzzer, LOW);
           plateauAlarm = 0;
         }
@@ -283,17 +337,21 @@ void loop() {
     }
 
     // cycle finished
-    if ((inspiration == 1) && (plateau == 1) && (expiration == 1)) {
+    if ((inspiration == 1) && (plateau == 1) && (expiration == 1))
+    {
       //close outputValve before the end of the cycle
-      if (cycle <= (millis() - (cycleZero - 200))) {
+      if (cycle <= (millis() - (cycleZero - 200)))
+      {
         //close Output valve
-        if (ovPos != 0) {
+        if (ovPos != 0)
+        {
           ovPos = 0;
           outValve.write(ovPos);
           //Serial.println("Close Output Valve");
         }
       }
-      if (cycle <= (millis() - cycleZero)) {
+      if (cycle <= (millis() - cycleZero))
+      {
         inspiration = 0;
         plateau = 0;
         expiration = 0;
@@ -302,12 +360,16 @@ void loop() {
         // Serial.println();
 
         // same here, keep track of any control changes on baseline pressure
-      } else if (baselinePos != ivPos) {
+      }
+      else if (baselinePos != ivPos)
+      {
         ivPos = baselinePos;
         inValve.write(ivPos);
       }
     }
-  } else {
+  }
+  else
+  {
     inValve.write(0);
     outValve.write(0);
     pressureValve.write(0);
