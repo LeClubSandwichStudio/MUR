@@ -1,5 +1,8 @@
 /***************************************************************************
   Copyright 2020 LE CLUB SANDWICH STUDIO SAS
+  
+  modified 24 March 2020
+  by Simon JUIF
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
