@@ -1,8 +1,5 @@
 /***************************************************************************
   Copyright 2020 LE CLUB SANDWICH STUDIO SAS
-  
-  modified 24 March 2020
-  by Simon JUIF
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -58,6 +55,8 @@ Adafruit_BME280 bmeAmbient;
   // RD3115MG Robotic Servos :    40-50
 ***************************************************************************/
 int servoCal = 60;
+int inValveLatency = 30;    // close the inValve slightly before opening outValve
+int outValveLatency = 200;  // close the outValve slightly before opening outValve
 
 // treshold values are arbitary set after consulting wikipedia. minimum 600hpa, maximum 1200hpa
 float minimumAtmosphericPressure = 600.;
@@ -69,6 +68,8 @@ bool inspirationAlarm = 0;
 bool plateauAlarm = 0;
 
 // Potentiometer and Servo pins
+int inValvePin = 2;     // Pin for input Valve
+int outValvePin = 3;    // Pin for Output Valve
 int Led = 5;            // future neopixel Led for user feedback
 int Buzzer = 6;         // Alarm Buzzer
 int Maintenance = 7;    // sets all valves to 0° for maintaince
@@ -113,11 +114,16 @@ void readPot() {
   cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
   // calculate the time of the inspiration cycle including plateau
   plateauT = map(analogRead(Ratio), 0, 1023, (cycle / 2), (cycle / 4));
-  // calculate the moment we go to plateau
-  inspirationT = plateauT / 4;
-  // set overpressure valve for finetuning
-  pvPos = map(analogRead(Peak), 1023, 0, 0, servoCal);
-  pressureValve.write(pvPos);
+  // add peak if necessairy
+  int tempI = analogRead(Peak);
+  // impementation of "dead Zone" on the low end of the peak potentiometer 
+  if (tempI <= 100) {
+    inspirationT = 0;
+  } else {
+    // inspiration Peak can not go higher than 1/10th of inspiration!
+    inspirationT = map(tempI, 100, 1023, 50, (plateauT / 10));
+  }
+
   // set plateau support pressure
   plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, servoCal);
   // set baseline pressure, can only be opend until a certain point
@@ -185,18 +191,17 @@ void setup() {
     pressureSensorFailure = 1;
     //Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");
   }
+  // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
   bmePatient.setSampling(1, 1, 3, 1, 1, 10);
   bool P2 = bmeAmbient.begin(0x76);
   if (!P2) {
     pressureSensorFailure = 1;
     //Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
   }
-  // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
   bmeAmbient.setSampling(1, 1, 3, 1, 1, 10);
   // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
-  inValve.attach(2);
-  outValve.attach(3);
-  pressureValve.attach(4);
+  inValve.attach(inValvePin);
+  outValve.attach(outValvePin);
   inValve.write(ivPos);
   outValve.write(ovPos);
   readPot();
@@ -243,12 +248,14 @@ void loop() {
       }
 
       // once inspiration is finished close input valve and set flags
-      if (inspirationT <= (millis() - cycleZero)) {
+      if (inspirationT <= (millis() - (cycleZero - inValveLatency))) {
         ivPos = plateauPos;
         inValve.write(ivPos);
-        plateau = 1;
         // Serial.print("Close Input Valve\t");
         // Serial.println((int)millis() - cycleZero);
+      }
+      if (inspirationT <= (millis() - cycleZero)) {
+        plateau = 1;
       }
     }
 
@@ -258,7 +265,7 @@ void loop() {
         ivPos = 0;
         inValve.write(baselinePos);
         ovPos = servoCal;
-        outValve.write(ovPos / 3);
+        outValve.write(ovPos);
         expiration = 1;
         // Serial.print("Open Output Valve\t");
         // Serial.println((int)millis() - cycleZero);
@@ -285,7 +292,7 @@ void loop() {
     // cycle finished
     if ((inspiration == 1) && (plateau == 1) && (expiration == 1)) {
       //close outputValve before the end of the cycle
-      if (cycle <= (millis() - (cycleZero - 200))) {
+      if (cycle <= (millis() - (cycleZero - outValveLatency))) {
         //close Output valve
         if (ovPos != 0) {
           ovPos = 0;
