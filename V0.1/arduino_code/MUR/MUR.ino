@@ -228,12 +228,13 @@ void setup() {
   // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
 
   bmePatient.setSampling(//1, 1, 3, 1, 1, 10); Error in visual studio
-      Adafruit_BME280::sensor_mode::MODE_FORCED/*1*/,
-      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
-      Adafruit_BME280::sensor_sampling::SAMPLING_X4/*3*/,
-      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
-      Adafruit_BME280::sensor_filter::FILTER_X2/*1*/,
-      Adafruit_BME280::standby_duration::STANDBY_MS_10/*STANDBY_MS_10 = 6   10 not existe  !! 10*/);
+      Adafruit_BME280::sensor_mode::MODE_FORCED,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X4,// = 3
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_filter::FILTER_X2,// = 1
+      Adafruit_BME280::standby_duration::STANDBY_MS_10 //STANDBY_MS_10 = 6      10 not exists !!
+  );
 
   //enum standby_duration {
   //    STANDBY_MS_0_5 = 0b000,// = 0
@@ -253,13 +254,13 @@ void setup() {
   }
 
   bmeAmbient.setSampling(//1, 1, 3, 1, 1, 10); Error in visual studio
-      Adafruit_BME280::sensor_mode::MODE_FORCED/*1*/,
-      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
-      Adafruit_BME280::sensor_sampling::SAMPLING_X4/*3*/,
-      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
-      Adafruit_BME280::sensor_filter::FILTER_X2/*1*/,
-      Adafruit_BME280::standby_duration::STANDBY_MS_10/*STANDBY_MS_10 = 6   10 not existe  !! 10*/);
-
+      Adafruit_BME280::sensor_mode::MODE_FORCED,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X4,// = 3
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_filter::FILTER_X2,// = 1
+      Adafruit_BME280::standby_duration::STANDBY_MS_10 //STANDBY_MS_10 = 6      10 not exists !!
+  );
   // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
   inValve.attach(inValvePin);
   outValve.attach(outValvePin);
