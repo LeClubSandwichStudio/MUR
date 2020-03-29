@@ -21,7 +21,7 @@
   - I didn't untangle all the program flow...
 
   BUT :
-  It beeps when you exceed inspirationAlarmLevel and plateauAlarmlevel
+  It beeps when you exceed peakAlarmLevel and plateauAlarmlevel
   This provides a minimum of over pressure protection...
 ***************************************************************************/
 
@@ -31,7 +31,6 @@
 
 Servo inValve;
 Servo outValve;
-Servo pressureValve;
 Adafruit_BME280 bmePatient;
 Adafruit_BME280 bmeAmbient;
 
@@ -95,9 +94,9 @@ int outValveLatency = 200;  // close the outValve slightly before opening outVal
 float minimumAtmosphericPressure = 600.;
 float maximumAtmosphericPressure = 1200.;
 // Ring Alarm if differential Pressure goes above that
-float inspirationAlarmLevel = 40.;
+float peakAlarmLevel = 40.;
 float plateauAlarmLevel = 30.;
-bool inspirationAlarm = 0;
+bool peakAlarm = 0;
 bool plateauAlarm = 0;
 
 // Potentiometer and Servo pins
@@ -115,7 +114,7 @@ int Expiratory = A6;
 
 // different timers in our breathing cycle
 unsigned long cycle = 0;
-unsigned long inspirationT = 0;
+unsigned long peakT = 0;
 unsigned long plateauT = 0;
 unsigned long expirationT = 0;
 
@@ -124,7 +123,7 @@ unsigned long cycleZero = 0;
 unsigned long bmpZero = 0;
 
 //running cycle flags
-bool inspiration = 0;
+bool peak = 0;
 bool plateau = 0;
 bool expiration = 0;
 
@@ -138,7 +137,7 @@ float bmpP = 0.;
 float bmeP = 0.;
 float differentialP = 0.;
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
-unsigned long bmpSample = 20;
+unsigned long pressureSample = 20;
 bool pressureSensorFailure = 0;
 
 // Read all potentiometers and adjust values
@@ -152,10 +151,10 @@ void readPot() {
   // impementation of "dead Zone" on the low end of the peak potentiometer
   // the "inValveLatency * 3" is just some rule of thumb, depends heavily on the Servo used
   if (tempI <= (inValveLatency * 3)) {
-    inspirationT = 0;
+    peakT = 0;
   } else {
     // inspiration Peak can not go higher than 1/10th of inspiration!
-    inspirationT = map(tempI, 100, 1023, 50, (plateauT / 10));
+    peakT = map(tempI, 100, 1023, 50, (plateauT / 10));
   }
 
   // set plateau support pressure
@@ -193,9 +192,7 @@ void updateSensors() {
   Serial.print("\t");
   Serial.print(ivPos / 4);
   Serial.print("\t");
-  Serial.print(ovPos / 4);
-  Serial.print("\t");
-  Serial.println(pvPos / 4);
+  Serial.println(ovPos / 4);
 
   // this is more like a debug graph
   /*Serial.print(bmpP);
@@ -245,7 +242,7 @@ void setup() {
 
 void loop() {
   // read the bmp180 in regular intervals
-  if (bmpSample < (millis() - bmpZero)) {
+  if (pressureSample < (millis() - bmpZero)) {
     // sample time before reading the sensor for a regular interval
     updateSensors();
   }
@@ -256,16 +253,16 @@ void loop() {
 
     // here comes the breathing cycle
     // start cycle
-    if ((inspiration == 0) && (plateau == 0) && (expiration == 0)) {
+    if ((peak == 0) && (plateau == 0) && (expiration == 0)) {
       cycleZero = millis();
-      inspiration = 1;
+      peak = 1;
       //Serial.println("Start cycle");
     }
 
-    // inspiration
-    if ((inspiration == 1) && (plateau == 0) && (expiration == 0)) {
+    // peak and transition to plateau
+    if ((peak == 1) && (plateau == 0) && (expiration == 0)) {
       // if inValve is not jet open on start
-      if (ivPos != servoCal) { // && (inspirationT <= (millis() - cycleZero))) {
+      if (ivPos != servoCal) {
         ivPos = servoCal;
         inValve.write(ivPos);
         // Serial.print("Open Input Valve\t");
@@ -274,29 +271,29 @@ void loop() {
 
       // check for plateau Alarm if no other Alarm is active
       if (!pressureSensorFailure && !plateauAlarm) {
-        if (differentialP > inspirationAlarmLevel) {
+        if (differentialP > peakAlarmLevel) {
           digitalWrite(Buzzer, HIGH);
-          inspirationAlarm = 1;
+          peakAlarm = 1;
         } else {
           digitalWrite(Buzzer, LOW);
-          inspirationAlarm = 0;
+          peakAlarm = 0;
         }
       }
 
       // once inspiration is finished close input valve and set flags
-      if (inspirationT <= (millis() - (cycleZero - inValveLatency))) {
+      if (peakT <= (millis() - (cycleZero - inValveLatency))) {
         ivPos = plateauPos;
         inValve.write(ivPos);
         // Serial.print("Close Input Valve\t");
         // Serial.println((int)millis() - cycleZero);
       }
-      if (inspirationT <= (millis() - cycleZero)) {
+      if (peakT <= (millis() - cycleZero)) {
         plateau = 1;
       }
     }
 
-    // plateau
-    if ((inspiration == 1) && (plateau == 1) && (expiration == 0)) {
+    // plateau and transition to expiration
+    if ((peak == 1) && (plateau == 1) && (expiration == 0)) {
       if (plateauT <= (millis() - cycleZero)) {
         ivPos = 0;
         inValve.write(baselinePos);
@@ -313,7 +310,7 @@ void loop() {
       }
 
       // check for plateau Alarm if no other Alarm is active
-      if (!pressureSensorFailure && !inspirationAlarm) {
+      if (!pressureSensorFailure && !peakAlarm) {
         // activate Buzzer if there is to much pressure during plateau
         if (differentialP > plateauAlarmLevel) {
           digitalWrite(Buzzer, HIGH);
@@ -325,9 +322,9 @@ void loop() {
       }
     }
 
-    // cycle finished
-    if ((inspiration == 1) && (plateau == 1) && (expiration == 1)) {
-      //close outputValve before the end of the cycle
+    // end of cycle
+    if ((peak == 1) && (plateau == 1) && (expiration == 1)) {
+      //close outputValve slightly before the end of the cycle
       if (cycle <= (millis() - (cycleZero - outValveLatency))) {
         //close Output valve
         if (ovPos != 0) {
@@ -337,7 +334,7 @@ void loop() {
         }
       }
       if (cycle <= (millis() - cycleZero)) {
-        inspiration = 0;
+        peak = 0;
         plateau = 0;
         expiration = 0;
         // Serial.print("Cycle Finished\t\t");
