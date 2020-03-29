@@ -38,23 +38,56 @@ Adafruit_BME280 bmeAmbient;
 // Servo Calibration, Alarm Levels and flags
 
 /***************************************************************************
-  // with a "standard" servo this value "should" be 180, please check with the
-  // output valve that it's really 180° !!!
-  // IF THIS IS NOT THE CASE :
-  // - plug only the output Valve Servo
-  // - !!! DON'T MOUNT ANY SERVO IN THE VALVES !!! You could damage the valves !!!
-  // - enable the maintaince Switch so that the servo goes to 0°
-  // - mark the 0° position somehow (marker, tape etc...)
-  // - disable maintaince
-  // - see if the servo makes exactly 160°
-  // - IF NOT tweak the servoCal value to match 160°
-  // - once the servo does exactly 180° save the sketch so that you keep it!
+  //  THERE IS NO "STANDARD SERVO OR AIRSOURCE" IN THIS PROJECT FOR INSTANCE
+  //  DUE TO THE DIFFICULTY TO GET RELIABLY PARTS DURING LOCKDOWN
   //
-  // HERE SOME STANDARD VALUES I FOUND FOR THE SERVOS I HAVE :
-  // 9g standard Servos :         60
-  // RD3115MG Robotic Servos :    40-50
+  //  Please follow the steps carefully to calibrate your device to
+  //  your Servos and Airsource. Wrong calibration can be harmful or even
+  //  kill a person! If you run into problems :
+  //  Common sense, physics and anatomy knowledge may help!
+  //
+  //
+  //  1. Mount and calibrate Valves :
+  //
+  //  - !!! DON'T MOUNT ANY SERVO IN THE VALVES !!! You could damage the valves
+  //  - Plug the servos and power up the device
+  //  - enable the maintaince switch so that the servo goes to 0° (closed valven position)
+  //  - close the Valve by Hand and check for air tight
+  //  - reapeatly check for easy-moving and air tight
+  //  - Mount the servos into the valves
+  //  - disable Maintaince Switch and check for each valve if they are air tight
+  //  - your system usually has leaks due to 3d printing
+  //  tolerance. make shure they are as small as possible!
+  //
+  //
+  //  2. Calibrate absolute Pressure from Airsource and Servo movement :
+  //
+  //  - Connect all "plumbing" to the device.
+  //  - Close the patient side hole with something air tight!
+  //  - Open overpressure Valve (V3) on the filterbox
+  //  - engage maintaince and calibration Switches
+  //  - Power up the device, WITHOUT AIRSOURCE!
+  //  - inValve should open, outValve is closed
+  //  - power up or connect your Airsource
+  //  - Open Arduino Serial Plotter
+  //  - adjust the overpressure valves until reach the desired pressure
+  //  (usually i close almost completly the little valve and I progressifly close 
+  //  the valve on the filter box...)
+  //  - switch back maintaince and calibration Switches to normal position
+  //  - control pressure levels over several cycles and adjust if necessary
+  //  - play with the controls, be shure the pressure is ok, check peak, plateau 
+  //  and expiratory individually
+  //  - if the valves open to wide, lower the servoCal value (less servo wear), 
+  //  - if the pressure is to low rise the servoCal Value 
+  //  (carefully! your servo will wear more)
+  //
+  //  BE SURE THAT YOUR AIRSOURCE IS STABLE OVER TIME, WE OBSERVED THAT 
+  //  TURBINE AIRSOURCES LOSE MORE POWER ONCE HOT THAN MEMBRANE PUMPS
+  //
+  //  !!! ATTENTION THIS A MEDICAL DEVICE, YOUR JOB AS MAKER IS ONLY TO MAKE 
+  //  AND CALIBRATE THE DEVICE, NOT TO OPERATE THE DEVICE !!!
 ***************************************************************************/
-int servoCal = 60;
+int servoCal = 150;
 int inValveLatency = 30;    // close the inValve slightly before opening outValve
 int outValveLatency = 200;  // close the outValve slightly before opening outValve
 
@@ -73,7 +106,7 @@ int outValvePin = 3;    // Pin for Output Valve
 int Led = 5;            // future neopixel Led for user feedback
 int Buzzer = 6;         // Alarm Buzzer
 int Maintenance = 7;    // sets all valves to 0° for maintaince
-int TarePressure = 8;   // possible feature to tare pressure sensors when system not under pressure
+int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
 int Cycles = A0;
 int Ratio = A1;
 int Peak = A2;
@@ -116,8 +149,9 @@ void readPot() {
   plateauT = map(analogRead(Ratio), 0, 1023, (cycle / 2), (cycle / 4));
   // add peak if necessairy
   int tempI = analogRead(Peak);
-  // impementation of "dead Zone" on the low end of the peak potentiometer 
-  if (tempI <= 100) {
+  // impementation of "dead Zone" on the low end of the peak potentiometer
+  // the "inValveLatency * 3" is just some rule of thumb, depends heavily on the Servo used
+  if (tempI <= (inValveLatency * 3)) {
     inspirationT = 0;
   } else {
     // inspiration Peak can not go higher than 1/10th of inspiration!
@@ -169,6 +203,7 @@ void updateSensors() {
     Serial.print(bmeP);
     Serial.println("\t");
     // do some funny math to see valve positions on the graphs on Serial Plotter
+    // made at about 60m above sea level.
     Serial.print((float)(101000 + (ivPos * 10)) / 100.);
     Serial.print("\t");
     Serial.print((float)(101000 + (ovPos * 10)) / 100.);
@@ -183,6 +218,7 @@ void updateSensors() {
 
 void setup() {
   pinMode(Maintenance, INPUT_PULLUP);
+  pinMode(PressureCal, INPUT_PULLUP);
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
   Serial.begin(115200);
@@ -208,15 +244,15 @@ void setup() {
 }
 
 void loop() {
+  // read the bmp180 in regular intervals
+  if (bmpSample < (millis() - bmpZero)) {
+    // sample time before reading the sensor for a regular interval
+    updateSensors();
+  }
+
   if (digitalRead(Maintenance) == HIGH) {
     // read potentiometers and update values
     readPot();
-
-    // read the bmp180 in regular intervals
-    if (bmpSample < (millis() - bmpZero)) {
-      // sample time before reading the sensor for a regular interval
-      updateSensors();
-    }
 
     // here comes the breathing cycle
     // start cycle
@@ -315,10 +351,13 @@ void loop() {
       }
     }
   } else {
-    inValve.write(0);
+    if (digitalRead(PressureCal) == 0) {
+      inValve.write(servoCal);
+    } else {
+      inValve.write(0);
+    }
     outValve.write(0);
-    pressureValve.write(0);
   }
-  // please uncomment following line for serial.debug
+  // please uncomment following line for serial debug or you will rapidly overflow Arduino
   // delay(200);
 }
