@@ -25,6 +25,9 @@
   This provides a minimum of over pressure protection...
 ***************************************************************************/
 
+
+#include <SPI.h>
+#include <Adafruit_Sensor.h>
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
@@ -228,13 +231,25 @@ void setup() {
     //Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");
   }
   // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
-  bmePatient.setSampling(1, 1, 3, 1, 1, 10);
+  bmePatient.setSampling(
+      Adafruit_BME280::sensor_mode::MODE_FORCED/*1*/,
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
+      Adafruit_BME280::sensor_sampling::SAMPLING_X4/*3*/,
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
+      Adafruit_BME280::sensor_filter::FILTER_X2/*1*/,
+      Adafruit_BME280::standby_duration::STANDBY_MS_10/*6   10 not existe  !! 10*/);
   bool P2 = bmeAmbient.begin(0x76);
   if (!P2) {
     pressureSensorFailure = 1;
     //Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
   }
-  bmeAmbient.setSampling(1, 1, 3, 1, 1, 10);
+  bmeAmbient.setSampling(
+      Adafruit_BME280::sensor_mode::MODE_FORCED/*1*/,
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
+      Adafruit_BME280::sensor_sampling::SAMPLING_X4/*3*/,
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
+      Adafruit_BME280::sensor_filter::FILTER_X2/*1*/,
+      Adafruit_BME280::standby_duration::STANDBY_MS_10/*6   10 not existe  !! 10*/);
   // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
   inValve.attach(inValvePin);
   outValve.attach(outValvePin);
