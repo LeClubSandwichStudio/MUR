@@ -21,9 +21,9 @@
   This provides a minimum of over pressure protection...
 ***************************************************************************/
 
-//Requiered in visual studio
+//Required with visual studio
 #include <SPI.h>
-//Requiered in visual studio
+//Required with visual studio
 #include <Adafruit_Sensor.h>
 
 #include <Servo.h>
@@ -234,6 +234,17 @@ void setup() {
       Adafruit_BME280::sensor_sampling::SAMPLING_X1/*1*/,
       Adafruit_BME280::sensor_filter::FILTER_X2/*1*/,
       Adafruit_BME280::standby_duration::STANDBY_MS_10/*STANDBY_MS_10 = 6   10 not existe  !! 10*/);
+
+  //enum standby_duration {
+  //    STANDBY_MS_0_5 = 0b000,// = 0
+  //    STANDBY_MS_10 = 0b110,// = 6
+  //    STANDBY_MS_20 = 0b111,// = 7
+  //    STANDBY_MS_62_5 = 0b001,// = 1
+  //    STANDBY_MS_125 = 0b010,// = 2
+  //    STANDBY_MS_250 = 0b011,// = 3
+  //    STANDBY_MS_500 = 0b100,// = 4
+  //    STANDBY_MS_1000 = 0b101// = 5
+  //};
 
   bool P2 = bmeAmbient.begin(0x76);
   if (!P2) {
