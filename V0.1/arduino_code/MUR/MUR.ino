@@ -108,9 +108,9 @@ int Maintenance = 7;    // sets all valves to 0° for maintaince
 int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
 int Cycles = A0;
 int Ratio = A1;
-int Peak = A2;
-int Inspiratory = A3;
-int Expiratory = A6;
+int Peak = A6;
+int Inspiratory = A7;
+int Expiratory = A8;
 
 // different timers in our breathing cycle
 unsigned long cycle = 0;
