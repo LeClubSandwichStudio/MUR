@@ -29,6 +29,14 @@
 #include <Wire.h>
 #include <Adafruit_BME280.h>
 
+#define DEBUG 0
+
+#ifdef DEBUG
+#define D(x) {x}
+#else
+#define D(x) do{}while(0)
+#endif
+
 Servo inValve;
 Servo outValve;
 Adafruit_BME280 bmePatient;
@@ -104,17 +112,17 @@ bool peakAlarm = 0;
 bool plateauAlarm = 0;
 
 // Potentiometer and Servo pins
-int inValvePin = 2;     // Pin for input Valve
-int outValvePin = 3;    // Pin for Output Valve
-int Led = 5;            // future neopixel Led for user feedback
-int Buzzer = 6;         // Alarm Buzzer
-int Maintenance = 7;    // sets all valves to 0° for maintaince
-int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
-int Cycles = A0;
-int Ratio = A1;
-int Peak = A6;
-int Inspiratory = A7;
-int Expiratory = A8;
+const int inValvePin = 2;     // Pin for input Valve
+const int outValvePin = 3;    // Pin for Output Valve
+const int Led = 5;            // future neopixel Led for user feedback
+const int Buzzer = 6;         // Alarm Buzzer
+const int Maintenance = 7;    // sets all valves to 0° for maintaince
+const int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
+const int Cycles = A0;
+const int Ratio = A1;
+const int Peak = A6;
+const int Inspiratory = A7;
+const int Expiratory = A8;
 
 // different timers in our breathing cycle
 unsigned long cycle = 0;
@@ -223,25 +231,49 @@ void setup() {
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
   Serial.begin(115200);
-  bool P1 = bmePatient.begin(0x77);
+  bool P1 = bmePatient.begin(BME280_ADDRESS);
   if (!P1) {
     pressureSensorFailure = 1;
-    //Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");
+    D(Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");)
   }
   // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
-  bmePatient.setSampling(1, 1, 3, 1, 1, 10);
-  bool P2 = bmeAmbient.begin(0x76);
+  bmePatient.setSampling (
+      Adafruit_BME280 :: sensor_mode :: MODE_FORCED ,// = 1
+      Adafruit_BME280 :: sensor_sampling :: SAMPLING_X1 ,// = 1
+      Adafruit_BME280 :: sensor_sampling :: SAMPLING_X4 ,// = 3
+      Adafruit_BME280 :: sensor_sampling :: SAMPLING_X1 ,// = 1
+      Adafruit_BME280 :: sensor_filter :: FILTER_X2 ,// = 1
+      Adafruit_BME280 :: standby_duration :: STANDBY_MS_10 //STANDBY_MS_10
+    );
+  bool P2 = bmeAmbient.begin(BME280_ADDRESS_ALTERNATE);
   if (!P2) {
     pressureSensorFailure = 1;
-    //Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
+    D(Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");)
   }
-  bmeAmbient.setSampling(1, 1, 3, 1, 1, 10);
+  bmeAmbient.setSampling (
+        Adafruit_BME280 :: sensor_mode :: MODE_FORCED ,// = 1
+        Adafruit_BME280 :: sensor_sampling :: SAMPLING_X1 ,// = 1
+        Adafruit_BME280 :: sensor_sampling :: SAMPLING_X4 ,// = 3
+        Adafruit_BME280 :: sensor_sampling :: SAMPLING_X1 ,// = 1
+        Adafruit_BME280 :: sensor_filter :: FILTER_X2 ,// = 1
+        Adafruit_BME280 :: standby_duration :: STANDBY_MS_10 //STANDBY_MS_10
+      );
   // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
   inValve.attach(inValvePin);
   outValve.attach(outValvePin);
   inValve.write(ivPos);
   outValve.write(ovPos);
   readPot();
+}
+
+
+void maintenanceState() {
+  if (digitalRead(PressureCal) == 0) {
+      inValve.write(servoCal);
+    } else {
+      inValve.write(0);
+    }
+    outValve.write(0);
 }
 
 void loop() {
@@ -260,7 +292,7 @@ void loop() {
     if ((peak == 0) && (plateau == 0) && (expiration == 0)) {
       cycleZero = millis();
       peak = 1;
-      //Serial.println("Start cycle");
+      D(Serial.println("Start cycle");)
     }
 
     // peak and transition to plateau
@@ -269,8 +301,8 @@ void loop() {
       if (ivPos != servoCal) {
         ivPos = servoCal;
         inValve.write(ivPos);
-        // Serial.print("Open Input Valve\t");
-        // Serial.println((int)millis() - cycleZero);
+        D(Serial.print("Open Input Valve\t");)
+        D(Serial.println((int)millis() - cycleZero);)
       }
 
       // check for plateau Alarm if no other Alarm is active
@@ -288,8 +320,8 @@ void loop() {
       if (peakT <= (millis() - (cycleZero - inValveLatency))) {
         ivPos = plateauPos;
         inValve.write(ivPos);
-        // Serial.print("Close Input Valve\t");
-        // Serial.println((int)millis() - cycleZero);
+        D(Serial.print("Close Input Valve\t");)
+        D(Serial.println((int)millis() - cycleZero);)
       }
       if (peakT <= (millis() - cycleZero)) {
         plateau = 1;
@@ -304,8 +336,8 @@ void loop() {
         ovPos = servoCal;
         outValve.write(ovPos);
         expiration = 1;
-        // Serial.print("Open Output Valve\t");
-        // Serial.println((int)millis() - cycleZero);
+        D(Serial.print("Open Output Valve\t");)
+        D(Serial.println((int)millis() - cycleZero);)
 
         // keep track of any control changes on plateau pressure
       } else if (plateauPos != ivPos) {
@@ -334,16 +366,16 @@ void loop() {
         if (ovPos != 0) {
           ovPos = 0;
           outValve.write(ovPos);
-          //Serial.println("Close Output Valve");
+          D(Serial.println("Close Output Valve");)
         }
       }
       if (cycle <= (millis() - cycleZero)) {
         peak = 0;
         plateau = 0;
         expiration = 0;
-        // Serial.print("Cycle Finished\t\t");
-        // Serial.println((int)millis() - cycleZero);
-        // Serial.println();
+        D(Serial.print("Cycle Finished\t\t");)
+        D(Serial.println((int)millis() - cycleZero);)
+        D(Serial.println();)
 
         // same here, keep track of any control changes on baseline pressure
       } else if (baselinePos != ivPos) {
@@ -352,13 +384,8 @@ void loop() {
       }
     }
   } else {
-    if (digitalRead(PressureCal) == 0) {
-      inValve.write(servoCal);
-    } else {
-      inValve.write(0);
-    }
-    outValve.write(0);
+    maintenanceState();
   }
-  // please uncomment following line for serial debug or you will rapidly overflow Arduino
-  // delay(200);
+  // the following line is required for serial debug or you will rapidly overflow Arduino
+  D(delay(200);)
 }
