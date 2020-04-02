@@ -40,6 +40,8 @@ Adafruit_BME280 bmeAmbient;
 /***************************************************************************
   //  THERE IS NO "STANDARD SERVO OR AIRSOURCE" IN THIS PROJECT FOR INSTANCE
   //  DUE TO THE DIFFICULTY TO GET RELIABLY PARTS DURING LOCKDOWN
+  //  
+  //  !!! WE ARE USING FUTABA S3003 SERVOS IN THIS PROTOTYPE with V2.1 VALVES !!!
   //
   //  Please follow the steps carefully to calibrate your device to
   //  your Servos and Airsource. Wrong calibration can be harmful or even
@@ -87,7 +89,9 @@ Adafruit_BME280 bmeAmbient;
   //  !!! ATTENTION THIS A MEDICAL DEVICE, YOUR JOB AS MAKER IS ONLY TO MAKE 
   //  AND CALIBRATE THE DEVICE, NOT TO OPERATE THE DEVICE !!!
 ***************************************************************************/
-int servoCal = 150;
+
+//  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
+int servoCal = 50;          // maximum movement of servo
 int inValveLatency = 30;    // close the inValve slightly before opening outValve
 int outValveLatency = 200;  // close the outValve slightly before opening outValve
 
@@ -109,9 +113,9 @@ int Maintenance = 7;    // sets all valves to 0° for maintaince
 int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
 int Cycles = A0;
 int Ratio = A1;
-int Peak = A2;
-int Inspiratory = A3;
-int Expiratory = A6;
+int Peak = A6;
+int Inspiratory = A7;
+int Expiratory = A8;
 
 // different timers in our breathing cycle
 unsigned long cycle = 0;
@@ -159,9 +163,9 @@ void readPot() {
   }
 
   // set plateau support pressure
-  plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, servoCal);
+  plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, (servoCal / 3));
   // set baseline pressure, can only be opend until a certain point
-  baselinePos = map(analogRead(Expiratory), 0, 1023, 0, (servoCal / 2));
+  baselinePos = map(analogRead(Expiratory), 0, 1023, 0, (servoCal / 4));
 }
 
 void updateSensors() {

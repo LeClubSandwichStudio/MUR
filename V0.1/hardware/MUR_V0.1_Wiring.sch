@@ -15359,15 +15359,6 @@ SWITCH</text>
 <wire x1="180.34" y1="111.76" x2="180.34" y2="121.92" width="0.1524" layer="91"/>
 </segment>
 </net>
-<net name="N$9" class="0">
-<segment>
-<pinref part="R4" gate="G$1" pin="S"/>
-<wire x1="198.12" y1="142.24" x2="180.34" y2="142.24" width="0.1524" layer="91"/>
-<wire x1="180.34" y1="142.24" x2="180.34" y2="127" width="0.1524" layer="91"/>
-<pinref part="U$1" gate="G$1" pin="17/A3"/>
-<wire x1="180.34" y1="127" x2="96.52" y2="127" width="0.1524" layer="91"/>
-</segment>
-</net>
 <net name="SCL" class="0">
 <segment>
 <pinref part="U$1" gate="G$1" pin="19/A5"/>
@@ -15406,9 +15397,9 @@ SWITCH</text>
 <segment>
 <pinref part="R5" gate="G$1" pin="S"/>
 <wire x1="198.12" y1="157.48" x2="177.8" y2="157.48" width="0.1524" layer="91"/>
-<wire x1="177.8" y1="157.48" x2="177.8" y2="134.62" width="0.1524" layer="91"/>
-<pinref part="U$1" gate="G$1" pin="20/A6"/>
-<wire x1="177.8" y1="134.62" x2="96.52" y2="134.62" width="0.1524" layer="91"/>
+<pinref part="U$1" gate="G$1" pin="22/A8"/>
+<wire x1="177.8" y1="157.48" x2="177.8" y2="139.7" width="0.1524" layer="91"/>
+<wire x1="177.8" y1="139.7" x2="96.52" y2="139.7" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="N$11" class="0">
@@ -15423,10 +15414,10 @@ SWITCH</text>
 <net name="N$8" class="0">
 <segment>
 <pinref part="R3" gate="G$1" pin="S"/>
-<wire x1="182.88" y1="127" x2="198.12" y2="127" width="0.1524" layer="91"/>
-<pinref part="U$1" gate="G$1" pin="16/A2"/>
-<wire x1="96.52" y1="124.46" x2="182.88" y2="124.46" width="0.1524" layer="91"/>
-<wire x1="182.88" y1="127" x2="182.88" y2="124.46" width="0.1524" layer="91"/>
+<wire x1="180.34" y1="127" x2="198.12" y2="127" width="0.1524" layer="91"/>
+<wire x1="180.34" y1="127" x2="180.34" y2="134.62" width="0.1524" layer="91"/>
+<pinref part="U$1" gate="G$1" pin="20/A6"/>
+<wire x1="180.34" y1="134.62" x2="96.52" y2="134.62" width="0.1524" layer="91"/>
 </segment>
 </net>
 <net name="N$6" class="0">
@@ -15475,6 +15466,29 @@ SWITCH</text>
 <pinref part="U$1" gate="G$1" pin="8"/>
 <wire x1="66.04" y1="132.08" x2="63.5" y2="132.08" width="0.1524" layer="91"/>
 <label x="63.5" y="132.08" size="1.27" layer="95" rot="R180" xref="yes"/>
+</segment>
+</net>
+<net name="SCL1" class="0">
+<segment>
+<pinref part="U$1" gate="G$1" pin="17/A3"/>
+<wire x1="96.52" y1="127" x2="99.06" y2="127" width="0.1524" layer="91"/>
+<label x="99.06" y="127" size="1.27" layer="95" xref="yes"/>
+</segment>
+</net>
+<net name="SDA1" class="0">
+<segment>
+<pinref part="U$1" gate="G$1" pin="16/A2"/>
+<wire x1="96.52" y1="124.46" x2="99.06" y2="124.46" width="0.1524" layer="91"/>
+<label x="99.06" y="124.46" size="1.27" layer="95" xref="yes"/>
+</segment>
+</net>
+<net name="N$3" class="0">
+<segment>
+<pinref part="R4" gate="G$1" pin="S"/>
+<wire x1="198.12" y1="142.24" x2="180.34" y2="142.24" width="0.1524" layer="91"/>
+<wire x1="180.34" y1="142.24" x2="180.34" y2="137.16" width="0.1524" layer="91"/>
+<pinref part="U$1" gate="G$1" pin="21/A7"/>
+<wire x1="180.34" y1="137.16" x2="96.52" y2="137.16" width="0.1524" layer="91"/>
 </segment>
 </net>
 </nets>
