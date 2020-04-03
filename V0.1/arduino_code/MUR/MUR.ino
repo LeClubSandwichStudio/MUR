@@ -1,12 +1,9 @@
 /***************************************************************************
   Copyright 2020 LE CLUB SANDWICH STUDIO SAS
-
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
-
   http://www.apache.org/licenses/LICENSE-2.0
-
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,27 +16,111 @@
   ALARMS ARE NOT JET WORKING PROPERLY DUE TO TWO REASONS :
   - BME280 library is blocking the loop if the sensor fails
   - I didn't untangle all the program flow...
-
   BUT :
   It beeps when you exceed peakAlarmLevel and plateauAlarmlevel
   This provides a minimum of over pressure protection...
 ***************************************************************************/
 
+//Required with visual studio
+#include <SPI.h>
+//Required with visual studio
+#include <Adafruit_Sensor.h>
+
 #include <Servo.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
 
-Servo inValve;
-Servo outValve;
-Adafruit_BME280 bmePatient;
-Adafruit_BME280 bmeAmbient;
+#ifdef _DEBUG
+#define D(x) {x}
+#else
+#define D(x) do{}while(0)
+#endif
+
+//Serial.print No Block Delay Helper
+#pragma region Serial No_Block_Delay Helper
+
+bool SerialprintNBD_bool = true;
+template< typename T > void SerialprintNBD(T x);
+template< typename T, typename U > void SerialprintNBD(T x, U y);
+template< typename T > void SerialprintlnNBD(T x);
+template< typename T, typename U > void SerialprintlnNBD(T x, U y);
+
+template< typename T >
+void SerialprintNBD(T x)
+{
+    if (SerialprintNBD_bool)
+        Serial.print(x);
+}
+
+template< typename T, typename U >
+void SerialprintNBD(T x, U y)
+{
+    if (SerialprintNBD_bool)
+        Serial.print(x, y);
+}
+
+template< typename T >
+void SerialprintlnNBD(T x)
+{
+    if (SerialprintNBD_bool)
+        Serial.println(x);
+}
+
+template< typename T, typename U >
+void SerialprintlnNBD(T x, U y)
+{
+    if (SerialprintNBD_bool)
+        Serial.println(x, y);
+}
+
+void SerialprintlnNBD()
+{
+    if (SerialprintNBD_bool)
+        Serial.println();
+}
+
+
+static bool Display_Serial_No_Block_Delay(bool* bool_to_chang, unsigned long time_ms = 200ul)
+{
+    static unsigned long times_tam = millis();
+
+    /* Measure once every four seconds. */
+    if (millis() - times_tam > time_ms)
+    {
+        times_tam = millis();
+        *bool_to_chang = true;
+        return(true);
+    }
+    *bool_to_chang = false;
+    return(false);
+}
+
+#pragma endregion
+
+// Potentiometer and Servo pins
+#pragma region Potentiometer and Servo pins
+
+const int inValvePin = 2;     // Pin for input Valve
+const int outValvePin = 3;    // Pin for Output Valve
+const int Led = 5;            // future neopixel Led for user feedback
+const int Buzzer = 6;         // Alarm Buzzer
+const int Maintenance = 7;    // sets all valves to 0° for maintaince
+const int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
+const int Cycles = A0;
+const int Ratio = A1;
+const int Peak = A6;
+const int Inspiratory = A7;
+const int Expiratory = A8;
+
+#pragma endregion
+
 
 // Servo Calibration, Alarm Levels and flags
 
 /***************************************************************************
   //  THERE IS NO "STANDARD SERVO OR AIRSOURCE" IN THIS PROJECT FOR INSTANCE
   //  DUE TO THE DIFFICULTY TO GET RELIABLY PARTS DURING LOCKDOWN
-  //  
+  //
   //  !!! WE ARE USING FUTABA S3003 SERVOS IN THIS PROTOTYPE with V2.1 VALVES !!!
   //
   //  Please follow the steps carefully to calibrate your device to
@@ -72,22 +153,29 @@ Adafruit_BME280 bmeAmbient;
   //  - power up or connect your Airsource
   //  - Open Arduino Serial Plotter
   //  - adjust the overpressure valves until reach the desired pressure
-  //  (usually i close almost completly the little valve and I progressifly close 
+  //  (usually i close almost completly the little valve and I progressifly close
   //  the valve on the filter box...)
   //  - switch back maintaince and calibration Switches to normal position
   //  - control pressure levels over several cycles and adjust if necessary
-  //  - play with the controls, be shure the pressure is ok, check peak, plateau 
+  //  - play with the controls, be shure the pressure is ok, check peak, plateau
   //  and expiratory individually
-  //  - if the valves open to wide, lower the servoCal value (less servo wear), 
-  //  - if the pressure is to low rise the servoCal Value 
+  //  - if the valves open to wide, lower the servoCal value (less servo wear),
+  //  - if the pressure is to low rise the servoCal Value
   //  (carefully! your servo will wear more)
   //
-  //  BE SURE THAT YOUR AIRSOURCE IS STABLE OVER TIME, WE OBSERVED THAT 
+  //  BE SURE THAT YOUR AIRSOURCE IS STABLE OVER TIME, WE OBSERVED THAT
   //  TURBINE AIRSOURCES LOSE MORE POWER ONCE HOT THAN MEMBRANE PUMPS
   //
-  //  !!! ATTENTION THIS A MEDICAL DEVICE, YOUR JOB AS MAKER IS ONLY TO MAKE 
+  //  !!! ATTENTION THIS A MEDICAL DEVICE, YOUR JOB AS MAKER IS ONLY TO MAKE
   //  AND CALIBRATE THE DEVICE, NOT TO OPERATE THE DEVICE !!!
 ***************************************************************************/
+
+Servo inValve;
+Servo outValve;
+Adafruit_BME280 bmePatient;
+Adafruit_BME280 bmeAmbient;
+
+#pragma region Declaration Vars
 
 //  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
 int servoCal = 50;          // maximum movement of servo
@@ -102,19 +190,6 @@ float peakAlarmLevel = 40.;
 float plateauAlarmLevel = 30.;
 bool peakAlarm = 0;
 bool plateauAlarm = 0;
-
-// Potentiometer and Servo pins
-int inValvePin = 2;     // Pin for input Valve
-int outValvePin = 3;    // Pin for Output Valve
-int Led = 5;            // future neopixel Led for user feedback
-int Buzzer = 6;         // Alarm Buzzer
-int Maintenance = 7;    // sets all valves to 0° for maintaince
-int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
-int Cycles = A0;
-int Ratio = A1;
-int Peak = A6;
-int Inspiratory = A7;
-int Expiratory = A8;
 
 // different timers in our breathing cycle
 unsigned long cycle = 0;
@@ -143,6 +218,10 @@ float differentialP = 0.;
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
 unsigned long pressureSample = 20;
 bool pressureSensorFailure = 0;
+
+#pragma endregion
+
+#pragma region Fonctions
 
 // Read all potentiometers and adjust values
 void readPot() {
@@ -217,25 +296,55 @@ void updateSensors() {
   */
 }
 
+#pragma endregion
+
 void setup() {
   pinMode(Maintenance, INPUT_PULLUP);
   pinMode(PressureCal, INPUT_PULLUP);
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
   Serial.begin(115200);
-  bool P1 = bmePatient.begin(0x77);
+  bool P1 = bmePatient.begin(BME280_ADDRESS);
   if (!P1) {
     pressureSensorFailure = 1;
-    //Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");
+    D(SerialprintlnNBD("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!"));
   }
   // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
-  bmePatient.setSampling(1, 1, 3, 1, 1, 10);
-  bool P2 = bmeAmbient.begin(0x76);
+
+  bmePatient.setSampling(//1, 1, 3, 1, 1, 10); Error in visual studio
+      Adafruit_BME280::sensor_mode::MODE_FORCED,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X4,// = 3
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_filter::FILTER_X2,// = 1
+      Adafruit_BME280::standby_duration::STANDBY_MS_10 //STANDBY_MS_10 = 6      10 not exists !!
+  );
+
+  //enum standby_duration {
+  //    STANDBY_MS_0_5 = 0b000,// = 0
+  //    STANDBY_MS_10 = 0b110,// = 6
+  //    STANDBY_MS_20 = 0b111,// = 7
+  //    STANDBY_MS_62_5 = 0b001,// = 1
+  //    STANDBY_MS_125 = 0b010,// = 2
+  //    STANDBY_MS_250 = 0b011,// = 3
+  //    STANDBY_MS_500 = 0b100,// = 4
+  //    STANDBY_MS_1000 = 0b101// = 5
+  //};
+
+  bool P2 = bmeAmbient.begin(BME280_ADDRESS_ALTERNATE);
   if (!P2) {
     pressureSensorFailure = 1;
-    //Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
+    D(SerialprintlnNBD("Could not find a valid BME280 sensor, check wiring, address, sensor ID!"));
   }
-  bmeAmbient.setSampling(1, 1, 3, 1, 1, 10);
+
+  bmeAmbient.setSampling(//1, 1, 3, 1, 1, 10); Error in visual studio
+      Adafruit_BME280::sensor_mode::MODE_FORCED,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_sampling::SAMPLING_X4,// = 3
+      Adafruit_BME280::sensor_sampling::SAMPLING_X1,// = 1
+      Adafruit_BME280::sensor_filter::FILTER_X2,// = 1
+      Adafruit_BME280::standby_duration::STANDBY_MS_10 //STANDBY_MS_10 = 6      10 not exists !!
+  );
   // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
   inValve.attach(inValvePin);
   outValve.attach(outValvePin);
@@ -260,7 +369,7 @@ void loop() {
     if ((peak == 0) && (plateau == 0) && (expiration == 0)) {
       cycleZero = millis();
       peak = 1;
-      //Serial.println("Start cycle");
+      D(SerialprintlnNBD("Start cycle"));
     }
 
     // peak and transition to plateau
@@ -269,8 +378,8 @@ void loop() {
       if (ivPos != servoCal) {
         ivPos = servoCal;
         inValve.write(ivPos);
-        // Serial.print("Open Input Valve\t");
-        // Serial.println((int)millis() - cycleZero);
+        D(SerialprintNBD("Open Input Valve\t"));
+        D(SerialprintlnNBD((int)millis() - cycleZero));
       }
 
       // check for plateau Alarm if no other Alarm is active
@@ -288,8 +397,8 @@ void loop() {
       if (peakT <= (millis() - (cycleZero - inValveLatency))) {
         ivPos = plateauPos;
         inValve.write(ivPos);
-        // Serial.print("Close Input Valve\t");
-        // Serial.println((int)millis() - cycleZero);
+        D(SerialprintNBD("Close Input Valve\t"));
+        D(SerialprintlnNBD((int)millis() - cycleZero));
       }
       if (peakT <= (millis() - cycleZero)) {
         plateau = 1;
@@ -304,8 +413,8 @@ void loop() {
         ovPos = servoCal;
         outValve.write(ovPos);
         expiration = 1;
-        // Serial.print("Open Output Valve\t");
-        // Serial.println((int)millis() - cycleZero);
+        D(SerialprintNBD("Open Output Valve\t"));
+        D(SerialprintlnNBD((int)millis() - cycleZero));
 
         // keep track of any control changes on plateau pressure
       } else if (plateauPos != ivPos) {
@@ -334,16 +443,16 @@ void loop() {
         if (ovPos != 0) {
           ovPos = 0;
           outValve.write(ovPos);
-          //Serial.println("Close Output Valve");
+          D(SerialprintlnNBD("Close Output Valve"));
         }
       }
       if (cycle <= (millis() - cycleZero)) {
         peak = 0;
         plateau = 0;
         expiration = 0;
-        // Serial.print("Cycle Finished\t\t");
-        // Serial.println((int)millis() - cycleZero);
-        // Serial.println();
+        D(SerialprintNBD("Cycle Finished\t\t"));
+        D(SerialprintlnNBD((int)millis() - cycleZero));
+        D(SerialprintlnNBD());
 
         // same here, keep track of any control changes on baseline pressure
       } else if (baselinePos != ivPos) {
@@ -361,4 +470,5 @@ void loop() {
   }
   // please uncomment following line for serial debug or you will rapidly overflow Arduino
   // delay(200);
+  Display_Serial_No_Block_Delay(&SerialprintNBD_bool, 200);
 }
