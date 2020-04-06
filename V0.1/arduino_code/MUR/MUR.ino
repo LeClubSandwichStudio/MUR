@@ -27,12 +27,12 @@
 
 #include <Servo.h>
 #include <Wire.h>
-#include <Adafruit_BME280.h>
+#include "SparkFunBME280.h"
 
 Servo inValve;
 Servo outValve;
-Adafruit_BME280 bmePatient;
-Adafruit_BME280 bmeAmbient;
+BME280 bmePatient;
+BME280 bmeAmbient;
 
 // Servo Calibration, Alarm Levels and flags
 
@@ -137,8 +137,8 @@ int ovPos = servoCal;
 int pvPos = 0;
 int plateauPos = 0;
 int baselinePos = 0;
-float bmpP = 0.;
 float bmeP = 0.;
+float bmeA = 0.;
 float differentialP = 0.;
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
 unsigned long pressureSample = 20;
@@ -171,21 +171,24 @@ void updateSensors() {
   // reset timer first for regular intervals!
   bmpZero = millis();
   // read Sensors, get differential
-  bmePatient.takeForcedMeasurement();
-  bmpP = (float)bmePatient.readPressure() / 100.;
-  bmeAmbient.takeForcedMeasurement();
-  bmeP = (float)bmeAmbient.readPressure() / 100.;
-  differentialP = bmpP - bmeP;
+  //bmePatient.takeForcedMeasurement();
+  
+  bmeP = bmePatient.readFloatPressure() / 100.;//(float)bmePatient.readPressure() / 100.;
+  //bmeAmbient.takeForcedMeasurement();
+  bmeA = bmeAmbient.readFloatPressure() / 100.;//(float)bmeAmbient.readPressure() / 100.;
+  differentialP = bmeP - bmeA;
 
   // check for sensor failiure, this alarm doesn't care if another alarm is active.
   // this is due to the fact that if one sensor fails the other alarms won't work anymore...
-  if ((bmpP <= minimumAtmosphericPressure) || (bmpP >= maximumAtmosphericPressure) || (bmeP <= minimumAtmosphericPressure) || (bmeP >= maximumAtmosphericPressure)) {
+  if ((bmeP <= minimumAtmosphericPressure) || (bmeP >= maximumAtmosphericPressure) || (bmeA <= minimumAtmosphericPressure) || (bmeA >= maximumAtmosphericPressure)) {
     pressureSensorFailure = 1;
     digitalWrite(Buzzer, HIGH);
   }
   // check for realistic pressures if pressureSensorFailure is active
   if (pressureSensorFailure == 1) {
-    if ((bmpP > minimumAtmosphericPressure) && (bmpP < maximumAtmosphericPressure) && (bmeP > minimumAtmosphericPressure) && (bmeP < maximumAtmosphericPressure)) {
+    // check if sensor was reconnected
+    initBME();
+    if ((bmeP > minimumAtmosphericPressure) && (bmeP < maximumAtmosphericPressure) && (bmeA > minimumAtmosphericPressure) && (bmeA < maximumAtmosphericPressure)) {
       pressureSensorFailure = 0;
       digitalWrite(Buzzer, LOW);
     }
@@ -217,26 +220,44 @@ void updateSensors() {
   */
 }
 
+void initBME(){
+  bmePatient.setI2CAddress(0x77);
+  if (bmePatient.beginI2C() == false) {
+    pressureSensorFailure = 1;
+    Serial.println("Could not find a valid Patient BME280 sensor, check wiring, address, sensor ID!");
+  }
+  bmePatient.setFilter(4); //0 to 4 is valid. Filter coefficient. See 3.4.4
+  bmePatient.setStandbyTime(0); //0 to 7 valid. Time between readings. See table 27.
+  bmePatient.setTempOverSample(0); //0 to 16 are valid. 0 disables temp sensing. See table 24.
+  bmePatient.setPressureOverSample(8); //0 to 16 are valid. 0 disables pressure sensing. See table 23.
+  bmePatient.setHumidityOverSample(0); //0 to 16 are valid. 0 disables humidity sensing. See table 19.
+  bmePatient.setMode(MODE_NORMAL);
+  
+  bmeAmbient.setI2CAddress(0x76);
+  if (bmeAmbient.beginI2C() == false) {
+    pressureSensorFailure = 1;
+    Serial.println("Could not find a valid Ambient BME280 sensor, check wiring, address, sensor ID!");
+  }
+  bmeAmbient.setFilter(4); //0 to 4 is valid. Filter coefficient. See 3.4.4
+  bmeAmbient.setStandbyTime(0); //0 to 7 valid. Time between readings. See table 27.
+  bmeAmbient.setTempOverSample(0); //0 to 16 are valid. 0 disables temp sensing. See table 24.
+  bmeAmbient.setPressureOverSample(8); //0 to 16 are valid. 0 disables pressure sensing. See table 23.
+  bmeAmbient.setHumidityOverSample(0); //0 to 16 are valid. 0 disables humidity sensing. See table 19.
+  bmeAmbient.setMode(MODE_NORMAL);
+}
+
 void setup() {
   pinMode(Maintenance, INPUT_PULLUP);
   pinMode(PressureCal, INPUT_PULLUP);
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
   Serial.begin(115200);
-  bool P1 = bmePatient.begin(0x77);
-  if (!P1) {
-    pressureSensorFailure = 1;
-    //Serial.println("Could not find a valid BMP180 sensor, check wiring, address, sensor ID!");
-  }
-  // configure bme280 : mode, tempSampling, pressSampling, humSampling, filter, duRation
-  bmePatient.setSampling(1, 1, 3, 1, 1, 10);
-  bool P2 = bmeAmbient.begin(0x76);
-  if (!P2) {
-    pressureSensorFailure = 1;
-    //Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
-  }
-  bmeAmbient.setSampling(1, 1, 3, 1, 1, 10);
-  // if the two pressure sensors are started for good light the led in green, attach servos and wait a bit
+  while(!Serial) delay(100);
+  delay(1000);
+  Wire.begin();
+  Wire.setClock(400000);
+  initBME();
+  
   inValve.attach(inValvePin);
   outValve.attach(outValvePin);
   inValve.write(ivPos);
