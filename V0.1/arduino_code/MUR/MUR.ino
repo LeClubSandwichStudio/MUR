@@ -113,13 +113,11 @@ int Maintenance = 7;    // sets all valves to 0° for maintaince
 int PressureCal = 8;  // closes outputValve and opens Input Valve for maximum pressure calibration
 int Cycles = A0;
 int Ratio = A1;
-int Peak = A6;
 int Inspiratory = A7;
 int Expiratory = A8;
 
 // different timers in our breathing cycle
 unsigned long cycle = 0;
-unsigned long peakT = 0;
 unsigned long plateauT = 0;
 unsigned long expirationT = 0;
 
@@ -128,7 +126,6 @@ unsigned long cycleZero = 0;
 unsigned long bmpZero = 0;
 
 //running cycle flags
-bool peak = 0;
 bool plateau = 0;
 bool expiration = 0;
 bool pressureMaxCal = 0;
@@ -154,17 +151,6 @@ void readPot() {
   cycle = map(analogRead(Cycles), 0, 1023, 6000, 2000);
   // calculate the time of the inspiration cycle including plateau
   plateauT = map(analogRead(Ratio), 0, 1023, (cycle / 2), (cycle / 4));
-  // add peak if necessairy
-  int tempI = analogRead(Peak);
-  // impementation of "dead Zone" on the low end of the peak potentiometer
-  // the "inValveLatency * 3" is just some rule of thumb, depends heavily on the Servo used
-  if (tempI <= (inValveLatency * 3)) {
-    peakT = 0;
-  } else {
-    // inspiration Peak can not go higher than 1/10th of inspiration!
-    peakT = map(tempI, 100, 1023, 50, (plateauT / 10));
-  }
-
   // set plateau support pressure
   plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, (servoCal));// / 3));
   // set baseline pressure, can only be opend until a certain point
@@ -403,49 +389,18 @@ void loop() {
     outValve.write(ovPos);
   } else if (digitalRead(Maintenance) && digitalRead(PressureCal)) {
 
+
+
     // here comes the breathing cycle
     // start cycle
-    if ((peak == 0) && (plateau == 0) && (expiration == 0)) {
+    if ((plateau == 0) && (expiration == 0)) {
       cycleZero = millis();
-      peak = 1;
+      plateau = 1;
       //Serial.println("Start cycle");
     }
 
-    // peak and transition to plateau
-    if ((peak == 1) && (plateau == 0) && (expiration == 0)) {
-      // if inValve is not jet open on start
-      if (ivPos != servoCal) {
-        ivPos = servoCal;
-        inValve.write(ivPos);
-        // Serial.print("Open Input Valve\t");
-        // Serial.println((int)millis() - cycleZero);
-      }
-
-      // check for plateau Alarm if no other Alarm is active
-      if (!pressureSensorFailure && !plateauAlarm) {
-        if (differentialP > peakAlarmLevel) {
-          digitalWrite(Buzzer, HIGH);
-          peakAlarm = 1;
-        } else {
-          digitalWrite(Buzzer, LOW);
-          peakAlarm = 0;
-        }
-      }
-
-      // once inspiration is finished close input valve and set flags
-      if (peakT <= (millis() - (cycleZero - inValveLatency))) {
-        ivPos = plateauPos;
-        inValve.write(ivPos);
-        // Serial.print("Close Input Valve\t");
-        // Serial.println((int)millis() - cycleZero);
-      }
-      if (peakT <= (millis() - cycleZero)) {
-        plateau = 1;
-      }
-    }
-
     // plateau and transition to expiration
-    if ((peak == 1) && (plateau == 1) && (expiration == 0)) {
+    if ((plateau == 1) && (expiration == 0)) {
       if (plateauT <= (millis() - cycleZero)) {
         ivPos = 0;
         inValve.write(baselinePos);
@@ -462,7 +417,7 @@ void loop() {
       }
 
       // check for plateau Alarm if no other Alarm is active
-      if (!pressureSensorFailure && !peakAlarm) {
+      if (!pressureSensorFailure) {
         // activate Buzzer if there is to much pressure during plateau
         if (differentialP > plateauAlarmLevel) {
           digitalWrite(Buzzer, HIGH);
@@ -475,7 +430,7 @@ void loop() {
     }
 
     // end of cycle
-    if ((peak == 1) && (plateau == 1) && (expiration == 1)) {
+    if ((plateau == 1) && (expiration == 1)) {
       //close outputValve slightly before the end of the cycle
       if (cycle <= (millis() - (cycleZero - outValveLatency))) {
         //close Output valve
@@ -486,7 +441,6 @@ void loop() {
         }
       }
       if (cycle <= (millis() - cycleZero)) {
-        peak = 0;
         plateau = 0;
         expiration = 0;
         // Serial.print("Cycle Finished\t\t");
