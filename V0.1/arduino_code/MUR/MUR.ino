@@ -39,7 +39,7 @@ BME280 bmeAmbient;
 /***************************************************************************
   //  THERE IS NO "STANDARD SERVO OR AIRSOURCE" IN THIS PROJECT FOR INSTANCE
   //  DUE TO THE DIFFICULTY TO GET RELIABLY PARTS DURING LOCKDOWN
-  //  
+  //
   //  !!! WE ARE USING FUTABA S3003 SERVOS IN THIS PROTOTYPE with V2.1 VALVES !!!
   //
   //  Please follow the steps carefully to calibrate your device to
@@ -72,27 +72,27 @@ BME280 bmeAmbient;
   //  - power up or connect your Airsource
   //  - Open Arduino Serial Plotter
   //  - adjust the overpressure valves until reach the desired pressure
-  //  (usually i close almost completly the little valve and I progressifly close 
+  //  (usually i close almost completly the little valve and I progressifly close
   //  the valve on the filter box...)
   //  - switch back maintaince and calibration Switches to normal position
   //  - control pressure levels over several cycles and adjust if necessary
-  //  - play with the controls, be shure the pressure is ok, check peak, plateau 
+  //  - play with the controls, be shure the pressure is ok, check peak, plateau
   //  and expiratory individually
-  //  - if the valves open to wide, lower the servoCal value (less servo wear), 
-  //  - if the pressure is to low rise the servoCal Value 
+  //  - if the valves open to wide, lower the servoCal value (less servo wear),
+  //  - if the pressure is to low rise the servoCal Value
   //  (carefully! your servo will wear more)
   //
-  //  BE SURE THAT YOUR AIRSOURCE IS STABLE OVER TIME, WE OBSERVED THAT 
+  //  BE SURE THAT YOUR AIRSOURCE IS STABLE OVER TIME, WE OBSERVED THAT
   //  TURBINE AIRSOURCES LOSE MORE POWER ONCE HOT THAN MEMBRANE PUMPS
   //
-  //  !!! ATTENTION THIS A MEDICAL DEVICE, YOUR JOB AS MAKER IS ONLY TO MAKE 
+  //  !!! ATTENTION THIS A MEDICAL DEVICE, YOUR JOB AS MAKER IS ONLY TO MAKE
   //  AND CALIBRATE THE DEVICE, NOT TO OPERATE THE DEVICE !!!
 ***************************************************************************/
 
 //  Please adapt these three values to your Servos and Airsource. We use Futaba S3003 Servos.
-int servoCal = 50;          // maximum movement of servo
+int servoCal = 90;          // maximum movement of servo
 int inValveLatency = 30;    // close the inValve slightly before opening outValve
-int outValveLatency = 200;  // close the outValve slightly before opening outValve
+int outValveLatency = 400;  // close the outValve slightly before opening outValve
 
 // treshold values are arbitary set after consulting wikipedia. minimum 600hpa, maximum 1200hpa
 float minimumAtmosphericPressure = 600.;
@@ -100,6 +100,7 @@ float maximumAtmosphericPressure = 1200.;
 // Ring Alarm if differential Pressure goes above that
 float peakAlarmLevel = 40.;
 float plateauAlarmLevel = 30.;
+float maximumPressure = 1.;
 bool peakAlarm = 0;
 bool plateauAlarm = 0;
 
@@ -130,6 +131,8 @@ unsigned long bmpZero = 0;
 bool peak = 0;
 bool plateau = 0;
 bool expiration = 0;
+bool pressureMaxCal = 0;
+bool pressureCal = 0;
 
 // Servo positions and others
 int ivPos = 0;
@@ -140,6 +143,7 @@ int baselinePos = 0;
 float bmeP = 0.;
 float bmeA = 0.;
 float differentialP = 0.;
+float sensorTare = 0.;
 // pressure sensor sample Frequency = 20ms runs smooth on teensy3.2
 unsigned long pressureSample = 20;
 bool pressureSensorFailure = 0;
@@ -162,7 +166,7 @@ void readPot() {
   }
 
   // set plateau support pressure
-  plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, (servoCal / 3));
+  plateauPos = map(analogRead(Inspiratory), 0, 1023, 0, (servoCal));// / 3));
   // set baseline pressure, can only be opend until a certain point
   baselinePos = map(analogRead(Expiratory), 0, 1023, 0, (servoCal / 4));
 }
@@ -170,13 +174,23 @@ void readPot() {
 void updateSensors() {
   // reset timer first for regular intervals!
   bmpZero = millis();
+
   // read Sensors, get differential
   //bmePatient.takeForcedMeasurement();
-  
   bmeP = bmePatient.readFloatPressure() / 100.;//(float)bmePatient.readPressure() / 100.;
+
   //bmeAmbient.takeForcedMeasurement();
   bmeA = bmeAmbient.readFloatPressure() / 100.;//(float)bmeAmbient.readPressure() / 100.;
+
   differentialP = bmeP - bmeA;
+  if ((differentialP < -30.) || (differentialP > 150.)) {
+    differentialP = 0.;
+    pressureSensorFailure = 1;
+    digitalWrite(Buzzer, HIGH);
+  }
+  if (!pressureCal) {
+    differentialP += sensorTare;
+  }
 
   // check for sensor failiure, this alarm doesn't care if another alarm is active.
   // this is due to the fact that if one sensor fails the other alarms won't work anymore...
@@ -193,13 +207,22 @@ void updateSensors() {
       digitalWrite(Buzzer, LOW);
     }
   }
-
+  
   // this is a more userfriendly graph
   Serial.print(differentialP);
   Serial.print("\t");
   Serial.print(ivPos / 4);
   Serial.print("\t");
-  Serial.println(ovPos / 4);
+  Serial.print(ovPos / 4);
+  if (pressureMaxCal) {
+    Serial.print("\t");
+    Serial.print(maximumPressure);
+  }
+  if (PressureCal) {
+    Serial.print("\t");
+    Serial.print(sensorTare);
+  }
+  Serial.println();
 
   // this is more like a debug graph
   /*Serial.print(bmpP);
@@ -220,30 +243,38 @@ void updateSensors() {
   */
 }
 
-void initBME(){
+void initBME() {
   bmePatient.setI2CAddress(0x77);
-  if (bmePatient.beginI2C() == false) {
-    pressureSensorFailure = 1;
-    Serial.println("Could not find a valid Patient BME280 sensor, check wiring, address, sensor ID!");
+  if (!bmePatient.isMeasuring()) {
+    Serial.println("Patient side Sensor HS !");
+    if (bmePatient.beginI2C() == false) {
+      pressureSensorFailure = 1;
+      Serial.println("Could not find a valid Patient BME280 sensor, check wiring, address, sensor ID!");
+    }
+    bmePatient.setFilter(1); //0 to 4 is valid. Filter coefficient. See 3.4.4
+    bmePatient.setStandbyTime(0); //0 to 7 valid. Time between readings. See table 27.
+    bmePatient.setTempOverSample(0); //0 to 16 are valid. 0 disables temp sensing. See table 24.
+    bmePatient.setPressureOverSample(4); //0 to 16 are valid. 0 disables pressure sensing. See table 23.
+    bmePatient.setHumidityOverSample(0); //0 to 16 are valid. 0 disables humidity sensing. See table 19.
+    bmePatient.setMode(MODE_NORMAL);
   }
-  bmePatient.setFilter(4); //0 to 4 is valid. Filter coefficient. See 3.4.4
-  bmePatient.setStandbyTime(0); //0 to 7 valid. Time between readings. See table 27.
-  bmePatient.setTempOverSample(0); //0 to 16 are valid. 0 disables temp sensing. See table 24.
-  bmePatient.setPressureOverSample(8); //0 to 16 are valid. 0 disables pressure sensing. See table 23.
-  bmePatient.setHumidityOverSample(0); //0 to 16 are valid. 0 disables humidity sensing. See table 19.
-  bmePatient.setMode(MODE_NORMAL);
-  
+
   bmeAmbient.setI2CAddress(0x76);
-  if (bmeAmbient.beginI2C() == false) {
-    pressureSensorFailure = 1;
-    Serial.println("Could not find a valid Ambient BME280 sensor, check wiring, address, sensor ID!");
+  if (!bmeAmbient.isMeasuring()) {
+    Serial.println("Ambient side Sensor HS !");
+    if (bmeAmbient.beginI2C() == false) {
+      pressureSensorFailure = 1;
+      Serial.println("Could not find a valid Ambient BME280 sensor, check wiring, address, sensor ID!");
+    }
+    bmeAmbient.setFilter(1); //0 to 4 is valid. Filter coefficient. See 3.4.4
+    bmeAmbient.setStandbyTime(0); //0 to 7 valid. Time between readings. See table 27.
+    bmeAmbient.setTempOverSample(0); //0 to 16 are valid. 0 disables temp sensing. See table 24.
+    bmeAmbient.setPressureOverSample(4); //0 to 16 are valid. 0 disables pressure sensing. See table 23.
+    bmeAmbient.setHumidityOverSample(0); //0 to 16 are valid. 0 disables humidity sensing. See table 19.
+    bmeAmbient.setMode(MODE_NORMAL);
   }
-  bmeAmbient.setFilter(4); //0 to 4 is valid. Filter coefficient. See 3.4.4
-  bmeAmbient.setStandbyTime(0); //0 to 7 valid. Time between readings. See table 27.
-  bmeAmbient.setTempOverSample(0); //0 to 16 are valid. 0 disables temp sensing. See table 24.
-  bmeAmbient.setPressureOverSample(8); //0 to 16 are valid. 0 disables pressure sensing. See table 23.
-  bmeAmbient.setHumidityOverSample(0); //0 to 16 are valid. 0 disables humidity sensing. See table 19.
-  bmeAmbient.setMode(MODE_NORMAL);
+  // whait a bit to ensure sensor startup
+  delay(20);
 }
 
 void setup() {
@@ -252,12 +283,12 @@ void setup() {
   pinMode(Buzzer, OUTPUT);
   digitalWrite(Buzzer, LOW);
   Serial.begin(115200);
-  while(!Serial) delay(100);
+  //while(!Serial) delay(100);
   delay(1000);
   Wire.begin();
   Wire.setClock(400000);
   initBME();
-  
+
   inValve.attach(inValvePin);
   outValve.attach(outValvePin);
   inValve.write(ivPos);
@@ -270,11 +301,70 @@ void loop() {
   if (pressureSample < (millis() - bmpZero)) {
     // sample time before reading the sensor for a regular interval
     updateSensors();
-  }
-
-  if (digitalRead(Maintenance) == HIGH) {
     // read potentiometers and update values
     readPot();
+  }
+  if (!digitalRead(Maintenance) && digitalRead(PressureCal)){
+    ivPos = 0;
+    inValve.write(ivPos);
+    ovPos = 0;
+    outValve.write(ovPos);
+  } else if (!digitalRead(Maintenance) && !digitalRead(PressureCal)){
+    maximumPressure = 0.5;
+    unsigned long timer = millis();
+    pressureMaxCal = 1;
+    //loop here to get maximum pressure
+    while (!digitalRead(Maintenance) && !digitalRead(PressureCal)){
+      if (pressureSample < (millis() - bmpZero)) {
+        // sample time before reading the sensor for a regular interval
+        updateSensors();
+        if(differentialP > (maximumPressure * 0.98)){
+          maximumPressure = (0.5 * differentialP + ((1 - 0.5) * maximumPressure));
+        }
+      }
+      //toggle valve positions regularlyto evaluate maximum pressure avaliable
+      if (millis() >= (timer + 1500)){
+        if (ivPos == 0){
+          timer = millis();
+          ivPos = servoCal;
+          inValve.write(ivPos);
+          ovPos = 0;
+          outValve.write(ovPos);
+        } else {
+          timer = millis();
+          ivPos = 0;
+          inValve.write(ivPos);
+          ovPos = servoCal;
+          outValve.write(ovPos);
+
+        }
+      }
+    }
+    pressureMaxCal = 0;
+    // save maximumPressure here
+  } else if (digitalRead(Maintenance) && !digitalRead(PressureCal)) {
+    // close input valve and open outputvalve, reset sensorTare
+    ivPos = 0;
+    inValve.write(ivPos);
+    ovPos = servoCal;
+    outValve.write(ovPos);
+    sensorTare = 0.;
+    pressureCal = 1;
+    float tempTare = 0.;
+    // wait a bit to depressurize cirquit
+    delay(2000);
+    // get differential between the two sensors
+    while (digitalRead(Maintenance) && !digitalRead(PressureCal)) {
+      if (pressureSample < (millis() - bmpZero)) {
+        // sample time before reading the sensor for a regular interval
+        updateSensors();
+        tempTare = (0.5 * differentialP + ((1 - 0.5) * tempTare));
+      }
+    }
+    pressureCal = 0;
+    sensorTare = -tempTare;
+
+  } else if (digitalRead(Maintenance) && digitalRead(PressureCal)) {
 
     // here comes the breathing cycle
     // start cycle
@@ -372,14 +462,29 @@ void loop() {
         inValve.write(ivPos);
       }
     }
-  } else {
-    if (digitalRead(PressureCal) == 0) {
-      inValve.write(servoCal);
+  }/* else {
+    if (!digitalRead(Maintenance) && digitalRead(pressureCal)) {
+      ivPos = 0;
+      inValve.write(ivPos);
+      ovPos = 0;
+      outValve.write(ovPos);
+    } else if (!digitalRead(Maintenance) && !digitalRead(pressureCal)) {
+      ivPos = servoCal;
+      inValve.write(ivPos);
+      ovPos = 0;
+      outValve.write(ovPos);
+
+      ivPos = servoCal;
+      inValve.write(ivPos);
     } else {
-      inValve.write(0);
+      ivPos = 0;
+      inValve.write(ivPos);
+
     }
-    outValve.write(0);
-  }
+    ovPos = 0;
+    outValve.write(ovPos);
+  }*/
+
   // please uncomment following line for serial debug or you will rapidly overflow Arduino
-  // delay(200);
+  //delay(200);
 }
