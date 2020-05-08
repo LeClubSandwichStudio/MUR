@@ -189,7 +189,7 @@ void updateSensors() {
     digitalWrite(Buzzer, HIGH);
   }
   if (!pressureCal) {
-    differentialP += sensorTare;
+    differentialP -= sensorTare;
   }
 
   // check for sensor failiure, this alarm doesn't care if another alarm is active.
@@ -207,7 +207,7 @@ void updateSensors() {
       digitalWrite(Buzzer, LOW);
     }
   }
-  
+
   // this is a more userfriendly graph
   Serial.print(differentialP);
   Serial.print("\t");
@@ -218,7 +218,7 @@ void updateSensors() {
     Serial.print("\t");
     Serial.print(maximumPressure);
   }
-  if (PressureCal) {
+  if (pressureCal) {
     Serial.print("\t");
     Serial.print(sensorTare);
   }
@@ -276,6 +276,37 @@ void initBME() {
   // whait a bit to ensure sensor startup
   delay(20);
 }
+void startupTare() {
+  // close input valve and open outputvalve, reset sensorTare
+  digitalWrite(Buzzer, LOW);
+  ivPos = 0;
+  inValve.write(ivPos);
+  ovPos = servoCal;
+  outValve.write(ovPos);
+  pressureCal = 1;
+  unsigned long timer = millis();
+  while (millis() <= (timer + 5000)) {
+    updateSensors();
+  }
+  digitalWrite(Buzzer, HIGH);
+  timer = millis();
+  while (millis() <= (timer + 5000)) {
+    integrateTare();
+  }
+  digitalWrite(Buzzer, HIGH);
+  pressureCal = 0;
+}
+
+void integrateTare() {
+  // get differential between the two sensors
+
+  if (pressureSample < (millis() - bmpZero)) {
+    // sample time before reading the sensor for a regular interval
+    updateSensors();
+    sensorTare = (0.5 * differentialP + ((1 - 0.5) * sensorTare));
+  }
+}
+
 
 void setup() {
   pinMode(Maintenance, INPUT_PULLUP);
@@ -294,6 +325,7 @@ void setup() {
   inValve.write(ivPos);
   outValve.write(ovPos);
   readPot();
+  startupTare();
 }
 
 void loop() {
@@ -304,27 +336,34 @@ void loop() {
     // read potentiometers and update values
     readPot();
   }
-  if (!digitalRead(Maintenance) && digitalRead(PressureCal)){
+  if (!digitalRead(Maintenance) && digitalRead(PressureCal)) {
     ivPos = 0;
     inValve.write(ivPos);
     ovPos = 0;
     outValve.write(ovPos);
-  } else if (!digitalRead(Maintenance) && !digitalRead(PressureCal)){
+  } else if (!digitalRead(Maintenance) && !digitalRead(PressureCal)) {
+    //depressurize circuit
+    ivPos = 0;
+    inValve.write(ivPos);
+    ovPos = servoCal;
+    outValve.write(ovPos);
+    delay(1000);
+    // reset variables
     maximumPressure = 0.5;
     unsigned long timer = millis();
     pressureMaxCal = 1;
     //loop here to get maximum pressure
-    while (!digitalRead(Maintenance) && !digitalRead(PressureCal)){
+    while (!digitalRead(Maintenance) && !digitalRead(PressureCal)) {
       if (pressureSample < (millis() - bmpZero)) {
         // sample time before reading the sensor for a regular interval
         updateSensors();
-        if(differentialP > (maximumPressure * 0.98)){
+        if ((differentialP > (maximumPressure * 0.95)) && (ivPos == servoCal)) {
           maximumPressure = (0.5 * differentialP + ((1 - 0.5) * maximumPressure));
         }
       }
       //toggle valve positions regularlyto evaluate maximum pressure avaliable
-      if (millis() >= (timer + 1500)){
-        if (ivPos == 0){
+      if (millis() >= (timer + 1500)) {
+        if (ivPos == 0) {
           timer = millis();
           ivPos = servoCal;
           inValve.write(ivPos);
@@ -336,7 +375,6 @@ void loop() {
           inValve.write(ivPos);
           ovPos = servoCal;
           outValve.write(ovPos);
-
         }
       }
     }
@@ -348,21 +386,13 @@ void loop() {
     inValve.write(ivPos);
     ovPos = servoCal;
     outValve.write(ovPos);
-    sensorTare = 0.;
     pressureCal = 1;
-    float tempTare = 0.;
     // wait a bit to depressurize cirquit
     delay(2000);
-    // get differential between the two sensors
     while (digitalRead(Maintenance) && !digitalRead(PressureCal)) {
-      if (pressureSample < (millis() - bmpZero)) {
-        // sample time before reading the sensor for a regular interval
-        updateSensors();
-        tempTare = (0.5 * differentialP + ((1 - 0.5) * tempTare));
-      }
+      integrateTare();
     }
     pressureCal = 0;
-    sensorTare = -tempTare;
 
   } else if (digitalRead(Maintenance) && digitalRead(PressureCal)) {
 
@@ -462,29 +492,7 @@ void loop() {
         inValve.write(ivPos);
       }
     }
-  }/* else {
-    if (!digitalRead(Maintenance) && digitalRead(pressureCal)) {
-      ivPos = 0;
-      inValve.write(ivPos);
-      ovPos = 0;
-      outValve.write(ovPos);
-    } else if (!digitalRead(Maintenance) && !digitalRead(pressureCal)) {
-      ivPos = servoCal;
-      inValve.write(ivPos);
-      ovPos = 0;
-      outValve.write(ovPos);
-
-      ivPos = servoCal;
-      inValve.write(ivPos);
-    } else {
-      ivPos = 0;
-      inValve.write(ivPos);
-
-    }
-    ovPos = 0;
-    outValve.write(ovPos);
-  }*/
-
+  }
   // please uncomment following line for serial debug or you will rapidly overflow Arduino
   //delay(200);
 }
