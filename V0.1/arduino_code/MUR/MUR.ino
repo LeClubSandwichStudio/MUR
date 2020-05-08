@@ -278,23 +278,25 @@ void initBME() {
 }
 void startupTare() {
   // close input valve and open outputvalve, reset sensorTare
-  digitalWrite(Buzzer, LOW);
   ivPos = 0;
   inValve.write(ivPos);
   ovPos = servoCal;
   outValve.write(ovPos);
   pressureCal = 1;
   unsigned long timer = millis();
-  while (millis() <= (timer + 5000)) {
+  //read sensors for one second to fill filters, warmup, etc
+  while (millis() <= (timer + 1000)) {
     updateSensors();
   }
-  digitalWrite(Buzzer, HIGH);
   timer = millis();
-  while (millis() <= (timer + 5000)) {
+  // calibrate sensorTare for 3 seconds
+  while (millis() <= (timer + 3000)) {
     integrateTare();
   }
-  digitalWrite(Buzzer, HIGH);
   pressureCal = 0;
+  // close output Valves
+  ovPos = 0;
+  outValve.write(ovPos);
 }
 
 void integrateTare() {
@@ -387,13 +389,18 @@ void loop() {
     ovPos = servoCal;
     outValve.write(ovPos);
     pressureCal = 1;
-    // wait a bit to depressurize cirquit
-    delay(2000);
+    //read sensors for one second to fill filters, warmup, etc
+    unsigned long timer = millis();
+    while (millis() <= (timer + 1000)) {
+      updateSensors();
+    }
     while (digitalRead(Maintenance) && !digitalRead(PressureCal)) {
       integrateTare();
     }
     pressureCal = 0;
-
+    // close output Valves
+    ovPos = 0;
+    outValve.write(ovPos);
   } else if (digitalRead(Maintenance) && digitalRead(PressureCal)) {
 
     // here comes the breathing cycle
